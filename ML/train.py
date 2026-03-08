@@ -4,20 +4,20 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split, Subset
 import numpy as np
-from ML.preprocessing import load_and_preprocess
-from ML.dataset import RSSIDataset
-from ML.models import CNN1D, ResNet1D
+from preprocessing import load_and_preprocess
+from dataset import RSSIDataset
+from models import CNN1D, ResNet1D
 
 FRAME_SIZE = 100   # 10s bei 10pkt/s
 OVERLAP = 0.5   # 50% overlap #todo vary and test whats best
 EPOCHS = 50
 BATCH_SIZE = 64
 LR = 1e-3
-SCENARIO = "env"
-STRATEGY = 1      # 1 = 75/25 Split, 2 = Leave-One-Env-Out # TODO validate
+SCENARIO = "node"   # Classification of the transmittor
+STRATEGY = 1        # 1 = 75/25 Split, 2 = Leave-One-Env-Out # TODO validate
 
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_data")
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data_park")
 
 
 def get_splits_strategy1(dataset):
@@ -27,7 +27,7 @@ def get_splits_strategy1(dataset):
     return random_split(dataset, [n_train, n - n_train])
 
 
-def get_splits_strategy2(x, labels_env, labels_node, test_env="lake"):
+def get_splits_strategy2(x, labels_env, labels_node, test_env="park"):
     """Train of 4 Environments, Test of the 5th (Leave-One-Out)"""
     target = labels_env if SCENARIO == "env" else labels_node
     train_idx = np.where(labels_env != test_env)[0]
@@ -68,7 +68,7 @@ def run(model_name="cnn"):
 
     # Daten laden
     X, labels_env, labels_node = load_and_preprocess(
-        "fake_data/", frame_size=FRAME_SIZE, overlap=OVERLAP
+        DATA_DIR, frame_size=FRAME_SIZE, overlap=OVERLAP
     )
     labels = labels_env if SCENARIO == "env" else labels_node
     dataset = RSSIDataset(X, labels)

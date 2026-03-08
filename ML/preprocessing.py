@@ -13,16 +13,20 @@ def load_and_preprocess(data_dir, frame_size=100, overlap=0.5):
     labels_env = []
     labels_node = []
 
-    csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
+    csv_files = glob.glob(os.path.join(data_dir, "*_clean.csv"))
 
-    for filepath in csv_files:
+    for filepath in sorted(csv_files):
         filename = os.path.basename(filepath)
-        # node_A_env_forest.csv → node=A, env=forest
-        parts = filename.replace(".csv", "").split("_")
-        node_id = parts[1]  # the node id e.g. "A"
-        env_id = parts[3]  # the environment e.g. "forest"
+        print(f"[preprocessing]   Lade: {filename}")
 
-        df = pd.read_csv(filepath, names=["timestamp", "rssi", "lqi"])
+        # Format: RXA_park_B.csv
+        # parts = ["RXA", "park", "B"]
+        parts = filename.replace(".csv", "").split("_")
+        env_id = parts[1]  # "park"
+        tx_node_id = parts[2]  # "B", "C", "D"
+
+        df = pd.read_csv(filepath)
+        df.columns = ["node_id", "timestamp", "rssi", "lqi"]
         rssi = df["rssi"].values.astype(float)
 
         # 1. Differentiation, so focus will be on the change in the link quality alone
@@ -40,7 +44,7 @@ def load_and_preprocess(data_dir, frame_size=100, overlap=0.5):
             frame = z[start:start + frame_size]
             frames_all.append(frame)
             labels_env.append(env_id)
-            labels_node.append(node_id)
+            labels_node.append(tx_node_id)
 
     X = np.array(frames_all, dtype=np.float32)
     return X, np.array(labels_env), np.array(labels_node)
