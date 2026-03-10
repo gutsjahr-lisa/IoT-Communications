@@ -1,5 +1,4 @@
 import os
-
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split, Subset
@@ -7,6 +6,10 @@ import numpy as np
 from preprocessing import load_and_preprocess
 from dataset import RSSIDataset
 from models import CNN1D, ResNet1D
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, classification_report
+import seaborn as sns
+import csv
 
 FRAME_SIZE = 100   # 10s bei 10pkt/s
 OVERLAP = 0.5   # 50% overlap #todo vary and test whats best
@@ -111,6 +114,104 @@ def run(model_name="cnn"):
     print(f"\nFinal Test Accuracy: {te_acc:.4f}")
 
 
+def run_with_export(model_name="cnn"):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    X, labels_env, labels_node = load_and_preprocess(
+        DATA_DIR, frame_size=FRAME_SIZE, overlap=OVERLAP
+    )
+    labels = labels_env if SCENARIO == "env" else labels_node
+    dataset = RSSIDataset(X, labels)
+    num_classes = len(dataset.classes)
+
+    train_ds, test_ds = get_splits_strategy1(dataset)
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+    test_loader = DataLoader(test_ds,  batch_size=BATCH_SIZE)
+
+    model = (CNN1D(num_classes, FRAME_SIZE) if model_name == "cnn" else ResNet1D(num_classes)).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+    criterion = nn.CrossEntropyLoss()
+
+    # training and history is recorded
+    history = {"train_loss": [], "train_acc": [], "test_acc": []}
+
+    for epoch in range(1, EPOCHS + 1):
+        tr_loss, tr_acc = train_one_epoch(model, train_loader, optimizer, criterion, device)
+        te_loss, te_acc = evaluate(model, test_loader, criterion, device)
+        scheduler.step()
+        history["train_loss"].append(tr_loss)
+        history["train_acc"].append(tr_acc)
+        history["test_acc"].append(te_acc)
+        if epoch % 5 == 0:
+            print(f"{epoch:>6} | {tr_loss:>10.4f} | {tr_acc:>9.3f} | {te_acc:>8.3f}")
+
+    # save model
+    model_path = f"{model_name}_{SCENARIO}_s{STRATEGY}.pt"
+    torch.save(model.state_dict(), model_path)
+    print(f"Modell gespeichert: {model_path}")
+
+    # plotting the learning rate
+    plt.figure(figsize=(10, 5))
+    plt.plot(history["train_acc"], label="Train Accuracy", color="steelblue")
+    plt.plot(history["test_acc"],  label="Test Accuracy",  color="orange")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.title(f"{model_name.upper()} — {SCENARIO} classification (Strategy {STRATEGY})")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plot_path = f"plot_training_{model_name}_{SCENARIO}_s{STRATEGY}.png"
+    plt.savefig(plot_path, dpi=150)
+    plt.show()
+    print(f"Training-Plot gespeichert: {plot_path}")
+
+    # plot of confusion matrix
+    model.eval()
+    all_pred, all_true = [], []
+    with torch.no_grad():
+        for X_batch, y_batch in test_loader:
+            pred = model(X_batch.to(device)).argmax(1).cpu()
+            all_pred.extend(pred.numpy())
+            all_true.extend(y_batch.numpy())
+
+    cm = confusion_matrix(all_true, all_pred)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=dataset.classes,
+                yticklabels=dataset.classes)
+    plt.title(f"Confusion Matrix — {model_name.upper()} ({SCENARIO})")
+    plt.ylabel("True")
+    plt.xlabel("Predicted")
+    plt.tight_layout()
+    cm_path = f"plot_cm_{model_name}_{SCENARIO}_s{STRATEGY}.png"
+    plt.savefig(cm_path, dpi=150)
+    plt.show()
+    print(f"Confusion Matrix gespeichert: {cm_path}")
+
+    # Classification report
+    report = classification_report(all_true, all_pred,
+                                   target_names=dataset.classes)
+    print(f"\nClassification Report:\n{report}")
+
+    report_path = f"report_{model_name}_{SCENARIO}_s{STRATEGY}.txt"
+    with open(report_path, "w") as f:
+        f.write(f"Model: {model_name.upper()}\n")
+        f.write(f"Scenario: {SCENARIO}\n")
+        f.write(f"Strategy: {STRATEGY}\n")
+        f.write(f"Frame size: {FRAME_SIZE}, Overlap: {OVERLAP}\n")
+        f.write(f"Final Test Accuracy: {history['test_acc'][-1]:.4f}\n")
+        f.write(f"Best Test Accuracy:  {max(history['test_acc']):.4f}\n\n")
+        f.write(report)
+    print(f"Report gespeichert: {report_path}")
+
+    return max(history["test_acc"])
+
+
 if __name__ == "__main__":
-    run("cnn")
-    run("resnet")
+    cnn_acc    = run_with_export("cnn")
+    resnet_acc = run_with_export("resnet")
+    print(f"\n{'='*45}")
+    print(f"  CNN    beste Accuracy: {cnn_acc:.4f}")
+    print(f"  ResNet beste Accuracy: {resnet_acc:.4f}")
+    print(f"{'='*45}")
