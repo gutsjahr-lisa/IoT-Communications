@@ -16,11 +16,11 @@ OVERLAP = 0.5   # 50% overlap #todo vary and test whats best
 EPOCHS = 50
 BATCH_SIZE = 64
 LR = 1e-3
-SCENARIO = "node"   # Classification of the transmittor
+SCENARIO = ("node")   # "node" or "environment"
 STRATEGY = 1        # 1 = 75/25 Split, 2 = Leave-One-Env-Out # TODO validate
 
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data_park")
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cleaned_data")
 
 
 def get_splits_strategy1(dataset):
@@ -30,7 +30,7 @@ def get_splits_strategy1(dataset):
     return random_split(dataset, [n_train, n - n_train])
 
 
-def get_splits_strategy2(x, labels_env, labels_node, test_env="park"):
+def get_splits_strategy2(x, labels_env, labels_node, test_env="river"):
     """Train of 4 Environments, Test of the 5th (Leave-One-Out)"""
     target = labels_env if SCENARIO == "env" else labels_node
     train_idx = np.where(labels_env != test_env)[0]
@@ -209,7 +209,7 @@ def run_with_export(model_name="cnn"):
 
 
 if __name__ == "__main__":
-    cnn_acc    = run_with_export("cnn")
+    cnn_acc = run_with_export("cnn")
     resnet_acc = run_with_export("resnet")
     print(f"\n{'='*45}")
     print(f"  CNN    beste Accuracy: {cnn_acc:.4f}")

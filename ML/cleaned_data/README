@@ -1,0 +1,3 @@
+clean the data:
+
+for f in data/*.csv; do ../clean_csv.sh "$f"; done
